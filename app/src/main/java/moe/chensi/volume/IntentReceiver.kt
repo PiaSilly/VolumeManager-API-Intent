@@ -1,66 +1,33 @@
-package moe.chensi.volume
+package app.vtools.volumemanager // Make sure this matches your project's top-level package
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 
-/**
- * Intent API for automation apps such as Tasker/MacroDroid.
- *
- * Action:
- *   moe.chensi.volume.action.SET_APP_VOLUME
- *
- * Extras:
- *   moe.chensi.volume.extra.PACKAGE  -> String package name
- *   moe.chensi.volume.extra.VOLUME   -> Float 0.0..1.0
- *
- * Example:
- *   am broadcast -a moe.chensi.volume.action.SET_APP_VOLUME \
- *       -e moe.chensi.volume.extra.PACKAGE com.example.app \
- *       --ef moe.chensi.volume.extra.VOLUME 0.5
- */
-class IntentReceiver : BroadcastReceiver() {
-    companion object {
-        private const val TAG = "VolumeManager.Intent"
-
-        const val ACTION_SET_APP_VOLUME =
-            "moe.chensi.volume.action.SET_APP_VOLUME"
-
-        const val EXTRA_PACKAGE =
-            "moe.chensi.volume.extra.PACKAGE"
-
-        const val EXTRA_VOLUME =
-            "moe.chensi.volume.extra.VOLUME"
-    }
-
+class VolumeIntentReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != ACTION_SET_APP_VOLUME) {
-            return
-        }
+        if (intent.action == "moe.chensi.volume.action.SET_APP_VOLUME") {
+            val targetPkg = intent.getStringExtra("moe.chensi.volume.extra.PACKAGE")
+            val rawVolume = intent.getFloatExtra("moe.chensi.volume.extra.VOLUME", -1.0f)
 
-        val packageName = intent.getStringExtra(EXTRA_PACKAGE)
-        if (packageName.isNullOrBlank()) {
-            Log.w(TAG, "Missing $EXTRA_PACKAGE")
-            return
-        }
+            if (targetPkg != null && rawVolume in 0.0f..1.0f) {
+                Log.d("VolumeIntentReceiver", "API Intent received: $targetPkg -> $rawVolume")
 
-        if (!intent.hasExtra(EXTRA_VOLUME)) {
-            Log.w(TAG, "Missing $EXTRA_VOLUME")
-            return
-        }
+                // Save to the exact shared preferences instance VolumeManager uses
+                val prefs = context.getSharedPreferences("app_volumes", Context.MODE_PRIVATE)
+                prefs.edit().putFloat(targetPkg, rawVolume).apply()
 
-        val volume = intent.getFloatExtra(EXTRA_VOLUME, Float.NaN)
-        if (volume.isNaN() || volume.isInfinite()) {
-            Log.w(TAG, "Invalid volume: $volume")
-            return
-        }
-
-        val manager = (context.applicationContext as MyApplication).manager
-        if (!manager.setAppVolume(packageName, volume)) {
-            Log.w(TAG, "Unknown package or invalid request: $packageName")
-        } else {
-            Log.i(TAG, "Set $packageName volume to ${volume.coerceIn(0f, 1f)}")
+                // Notify the active tracking service to immediately process the changes
+                try {
+                    val intentService = Intent(context, Class.forName("app.vtools.volumemanager.VolumeTrackingService")) // Update string to match your exact Tracking Service path
+                    intentService.action = "REFRESH_VOLUME_TRACKS"
+                    intentService.putExtra("target_package", targetPkg)
+                    context.startService(intentService)
+                } catch (e: Exception) {
+                    Log.e("VolumeIntentReceiver", "Failed to notify VolumeTrackingService: ${e.message}")
+                }
+            }
         }
     }
 }
