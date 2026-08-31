@@ -398,7 +398,7 @@ class Service : AccessibilityService() {
             }
         }
     }
-    // --- AB HIER KOPIEREN UND VOR DER LETZTEN KLAMMER EINSETZEN ---
+    // --- AB HIER NEUEN CODE KOPIEREN UND VOR DER LETZTEN KLAMMER EINSETZEN ---
 
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "moe.chensi.volume.action.SET_APP_VOLUME") {
@@ -410,7 +410,7 @@ class Service : AccessibilityService() {
                 val sharedPrefs = getSharedPreferences("volume_settings", android.content.Context.MODE_PRIVATE)
                 sharedPrefs.edit().putFloat(targetPackage, volumeMultiplier).apply()
 
-                // Erzwingt die sofortige Änderung im Audio-Mixer
+                // Erzwingt die sofortige Änderung über Reflection
                 updateActiveTrackVolumesDirectly(targetPackage, volumeMultiplier)
             }
         }
@@ -423,15 +423,26 @@ class Service : AccessibilityService() {
             val activePlayers = audioManager.activePlaybackConfigurations
 
             for (config in activePlayers) {
-                val playerProxy = config.playerProxy
-                if (playerProxy != null) {
-                    if (getPackNameFromUid(config.clientUid) == packageName) {
-                        playerProxy.setVolume(volume)
+                try {
+                    // Nutzt Reflection, um an die versteckte getPlayerProxy() Methode zu kommen
+                    val getPlayerProxyMethod = config.javaClass.getMethod("getPlayerProxy")
+                    val playerProxy = getPlayerProxyMethod.invoke(config)
+
+                    // Nutzt Reflection, um an die versteckte getClientUid() Methode zu kommen
+                    val getClientUidMethod = config.javaClass.getMethod("getClientUid")
+                    val clientUid = getClientUidMethod.invoke(config) as Int
+
+                    if (playerProxy != null && getPackNameFromUid(clientUid) == packageName) {
+                        // Ruft die versteckte setVolume(float) Methode auf dem Proxy-Objekt auf
+                        val setVolumeMethod = playerProxy.javaClass.getMethod("setVolume", Float::class.javaPrimitiveType)
+                        setVolumeMethod.invoke(playerProxy, volume)
                     }
+                } catch (internalEx: Exception) {
+                    // Falls eine einzelne Audiospur blockiert, springe zur nächsten
                 }
             }
         } catch (e: Exception) {
-            // Verhindert Abstürze, falls sich die Audioliste im System schnell ändert
+            // Globale Absicherung gegen Abstürze
         }
     }
 
@@ -442,6 +453,6 @@ class Service : AccessibilityService() {
             ""
         }
     }
-    
+
     // --- ENDE DES CODES ---
 }
