@@ -1,42 +1,35 @@
+name: Build APK
+
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-    paths-ignore:
-      - README.md
-  workflow_dispatch:
 
 jobs:
   build:
-    name: Build
+    name: Build Debug APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "21"
-          cache: "gradle"
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
 
-      - name: Build
-        run: ./gradlew assembleRelease
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
 
-      - name: Sign APK
-        run: |
-          echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > keystore.jks
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -c -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-            --ks keystore.jks \
-            --ks-pass pass:${{ secrets.KEYSTORE_PASSWORD }} \
-            --ks-key-alias ${{ secrets.KEY_ALIAS }} \
-            --key-pass pass:${{ secrets.KEY_PASSWORD }} \
-            app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Build APK
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload artifacts
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: volume-manager.apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          name: VolumeManager-debug
+          path: app/build/outputs/apk/debug/*.apk
