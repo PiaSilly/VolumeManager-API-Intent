@@ -398,4 +398,50 @@ class Service : AccessibilityService() {
             }
         }
     }
+    // --- AB HIER KOPIEREN UND VOR DER LETZTEN KLAMMER EINSETZEN ---
+
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "moe.chensi.volume.action.SET_APP_VOLUME") {
+            val targetPackage = intent.getStringExtra("moe.chensi.volume.extra.PACKAGE")
+            val volumeMultiplier = intent.getFloatExtra("moe.chensi.volume.extra.VOLUME", -1.0f)
+
+            if (targetPackage != null && volumeMultiplier in 0.0f..1.0f) {
+                // Speichert die Lautstärke lokal im App-Speicher
+                val sharedPrefs = getSharedPreferences("volume_settings", android.content.Context.MODE_PRIVATE)
+                sharedPrefs.edit().putFloat(targetPackage, volumeMultiplier).apply()
+
+                // Erzwingt die sofortige Änderung im Audio-Mixer
+                updateActiveTrackVolumesDirectly(targetPackage, volumeMultiplier)
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun updateActiveTrackVolumesDirectly(packageName: String, volume: Float) {
+        try {
+            val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+            val activePlayers = audioManager.activePlaybackConfigurations
+
+            for (config in activePlayers) {
+                val playerProxy = config.playerProxy
+                if (playerProxy != null) {
+                    if (getPackNameFromUid(config.clientUid) == packageName) {
+                        playerProxy.setVolume(volume)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Verhindert Abstürze, falls sich die Audioliste im System schnell ändert
+        }
+    }
+
+    private fun getPackNameFromUid(uid: Int): String {
+        return try {
+            packageManager.getNameForUid(uid) ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+    
+    // --- ENDE DES CODES ---
 }
